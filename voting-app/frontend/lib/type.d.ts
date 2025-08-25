@@ -1,0 +1,3 @@
+type SuiID = {
+  id: string;
+};

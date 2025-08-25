@@ -2,7 +2,11 @@
 /// Module Name: dashboard
 module voting_system::dashboard;
 
-use voting_system::debug::{create_debug_msg, create_debug_obj};
+use sui::types;
+use voting_system::debug;
+
+const EDuplicateProposal: u64 = 0;
+const EInvalidOtw: u64 = 1;
 
 public struct Dashboard has key {
     id: UID,
@@ -15,21 +19,11 @@ public struct AdminCap has key {
 
 // hot potato pattern - struct with no abilities
 // it can't be stored, copied or discarded
-public struct Potato {}
-public struct ShoppingCart {
-    items: vector<u64>,
-}
-
-// Drop ability
-public struct DashboardConfig has drop {
-    value: u64,
-}
-
 // OTW {@link https://move-book.com/programmability/one-time-witness}
 public struct DASHBOARD has drop {}
 
 fun init(otw: DASHBOARD, ctx: &mut TxContext) {
-    create_debug_obj(&otw);
+    debug::create_debug_obj(&otw);
 
     new(otw, ctx);
 
@@ -42,42 +36,29 @@ fun init(otw: DASHBOARD, ctx: &mut TxContext) {
     );
 }
 
-public fun new(_otw: DASHBOARD, ctx: &mut TxContext) {
+public fun new(otw: DASHBOARD, ctx: &mut TxContext) {
+    assert!(types::is_one_time_witness(&otw), EInvalidOtw);
+
     let dashboard = Dashboard {
         id: object::new(ctx),
         proposals_ids: vector[],
     };
-    let config = DashboardConfig { value: 100 };
-    let mut config_2 = config;
-    config_2.value = 200;
-    let config_3 = config_2;
-    create_debug_obj(&config_3);
-    let potato = Potato {};
 
-    consume_config(config_3);
-    pass_potato(potato);
     // dashboard가 register_proposal fun의 self로 전달
     // dashboard.register_proposal(proposal_id);
 
     transfer::share_object(dashboard);
 }
 
-public fun checkout(shopping_cart: ShoppingCart) {
-    payment(shopping_cart)
+public fun register_proposal(self: &mut Dashboard, _admin_cap: &AdminCap, proposal_id: ID) {
+    // `!`는 실행 결과가 false이면 에러를 반환 하고 함수종료
+    assert!(!self.proposals_ids.contains(&proposal_id), EDuplicateProposal);
+
+    self.proposals_ids.push_back(proposal_id);
 }
 
-fun payment(shopping_cart: ShoppingCart) {
-    let ShoppingCart { items: _ } = shopping_cart;
-}
-
-fun pass_potato(potato: Potato) {
-    let Potato {} = potato;
-}
-
-fun consume_config(_config: DashboardConfig) {}
-
-public fun register_proposal(self: &mut Dashboard, proposal_id: ID) {
-    self.proposals_ids.push_back(proposal_id)
+public fun getProposalIds(self: &Dashboard): vector<ID> {
+    self.proposals_ids
 }
 
 // transfer는 public 공개를 하면 안되지만 테스트에서는 예외적으로 함수를 허용 해줌.
@@ -92,6 +73,12 @@ public fun issue_admin_cap(ctx: &mut TxContext) {
         ctx.sender(),
     );
 }
+
+#[test_only]
+public fun new_otw(_ctx: &mut TxContext): DASHBOARD {
+    DASHBOARD {}
+}
+
 #[test]
 fun test_module_init() {
     use sui::test_scenario;
@@ -102,7 +89,7 @@ fun test_module_init() {
     {
         let otw = DASHBOARD {};
         init(otw, scenario.ctx());
-        create_debug_msg(b"test_module_init".to_string())
+        debug::create_debug_msg(b"test_module_init".to_string())
     };
     scenario.next_tx(creator);
     {
