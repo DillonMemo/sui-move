@@ -4,6 +4,7 @@ module voting_system::proposal;
 
 use std::string::String;
 use sui::table::{Self, Table};
+use sui::url::{Url, new_unsafe_from_bytes};
 use voting_system::dashboard::AdminCap;
 use voting_system::debug::create_debug_msg;
 
@@ -21,6 +22,14 @@ public struct Proposal has key {
     /// { 0x03 : true }
     voters: Table<address, bool>,
     voter_addresses: vector<address>,
+}
+
+public struct VoteProofNFT has key {
+    id: UID,
+    proposal_id: ID,
+    name: String,
+    description: String,
+    url: Url,
 }
 
 // === Public Functions ===
@@ -62,6 +71,8 @@ public fun vote(self: &mut Proposal, vote_yes: bool, ctx: &TxContext) {
     // 새로운 투표 추가
     self.voters.add(sender, vote_yes);
     self.voter_addresses.push_back(sender);
+
+    issue_vote_proof(self, vote_yes, ctx)
 }
 
 // === View Functions ===
@@ -121,4 +132,16 @@ public fun create(
     transfer::share_object(proposal);
 
     id
+}
+
+// === Private Functions ===
+fun issue_vote_proof(proposal: &Proposal, vote_yes: bool, ctx: &TxContext) {
+    let mut name = b"NFT".to_string();
+    name.append(proposal.getTitle());
+
+    let mut description = b"Proof of votting on ".to_string();
+    let proposal_address = object::id_address(proposal).to_string();
+    description.append(proposal_address);
+
+    let vote_yes_image = new_unsafe_from_bytes(bytes);
 }
