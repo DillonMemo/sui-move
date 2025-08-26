@@ -4,7 +4,7 @@ module voting_system::voting_system_tests;
 use sui::test_scenario;
 use voting_system::dashboard::{Self, AdminCap, Dashboard};
 use voting_system::debug::{create_debug_obj, create_debug_msg};
-use voting_system::proposal::{Self, Proposal};
+use voting_system::proposal::{Self, Proposal, VoteProofNFT};
 
 const EWrongVoteCount: u64 = 0;
 #[test]
@@ -144,13 +144,51 @@ fun test_voting() {
     {
         let mut proposal = scenario.take_shared<Proposal>();
 
-        proposal.vote(false, scenario.ctx());
-        proposal.vote(false, scenario.ctx());
-        proposal.vote(true, scenario.ctx());
+        // 첫투표
+        let old_nft = option::none();
+        proposal.vote(false, old_nft, scenario.ctx());
 
-        create_debug_msg(b"=== getVotedYesCount ===".to_string());
+        create_debug_msg(b"=== 1. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
-        assert!(proposal.getVotedYesCount() == 1, EWrongVoteCount);
+        create_debug_msg(b"=== 1. getVotedNoCount ===".to_string());
+        create_debug_obj(&proposal.getVotedNoCount());
+
+        test_scenario::return_shared(proposal);
+    };
+
+    scenario.next_tx(bob);
+    {
+        let mut proposal = scenario.take_shared<Proposal>();
+        let bob_nft = scenario.take_from_sender<VoteProofNFT>();
+
+        // 재투표 (false -> false, 같은 선택)
+        let old_nft = option::some(bob_nft);
+        proposal.vote(false, old_nft, scenario.ctx());
+
+        create_debug_msg(b"=== 2. getVotedYesCount ===".to_string());
+        create_debug_obj(&proposal.getVotedYesCount());
+        create_debug_msg(b"=== 2. getVotedNoCount ===".to_string());
+        create_debug_obj(&proposal.getVotedNoCount());
+
+        test_scenario::return_shared(proposal);
+    };
+
+    // Bob의 두 번째 NFT 가져오기
+    scenario.next_tx(bob);
+    {
+        let mut proposal = scenario.take_shared<Proposal>();
+        let bob_nft2 = scenario.take_from_sender<VoteProofNFT>();
+        create_debug_msg(b"=== 3. bob nfts ===".to_string());
+        create_debug_obj(&bob_nft2);
+
+        // 재투표 (false -> true, 다른 선택)
+        let old_nft = option::some(bob_nft2);
+        proposal.vote(true, old_nft, scenario.ctx());
+
+        create_debug_msg(b"=== 3. getVotedYesCount ===".to_string());
+        create_debug_obj(&proposal.getVotedYesCount());
+        create_debug_msg(b"=== 3. getVotedNoCount ===".to_string());
+        create_debug_obj(&proposal.getVotedNoCount());
 
         test_scenario::return_shared(proposal);
     };
@@ -158,14 +196,26 @@ fun test_voting() {
     scenario.next_tx(alice);
     {
         let mut proposal = scenario.take_shared<Proposal>();
+        let bob_nft = scenario.take_from_address<VoteProofNFT>(bob);
+        create_debug_msg(b"=== 4. bob nfts ===".to_string());
+        create_debug_obj(&bob_nft);
 
-        proposal.vote(true, scenario.ctx());
+        // alice 첫투표
+        // let old_nft = option::none();
+        let old_nft_2 = option::some(bob_nft);
+        create_debug_msg(b"=== 4. test ===".to_string());
+        create_debug_obj(&old_nft_2);
+        proposal.vote(true, old_nft_2, scenario.ctx());
 
-        create_debug_msg(b"=== getVotedYesCount ===".to_string());
+        create_debug_msg(b"=== 4. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
+        create_debug_msg(b"=== 4. getVotedNoCount ===".to_string());
+        create_debug_obj(&proposal.getVotedNoCount());
         assert!(proposal.getVotedYesCount() == 2, EWrongVoteCount);
         assert!(proposal.getVotedNoCount() == 0, EWrongVoteCount);
 
+        // NFT 확인 후 다시 Bob에게 반환
+        // test_scenario::return_to_address<VoteProofNFT>(bob, old_nft_2.destroy_some());
         test_scenario::return_shared(proposal);
     };
     scenario.end();
