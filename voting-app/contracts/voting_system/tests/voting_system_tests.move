@@ -1,12 +1,28 @@
 #[test_only]
 module voting_system::voting_system_tests;
 
+use sui::clock;
 use sui::test_scenario;
 use voting_system::dashboard::{Self, AdminCap, Dashboard};
 use voting_system::debug::{create_debug_obj, create_debug_msg};
 use voting_system::proposal::{Self, Proposal, VoteProofNFT};
 
 const EWrongVoteCount: u64 = 0;
+const EWrongStatus: u64 = 1;
+
+fun new_proposal(admin_cap: &AdminCap, ctx: &mut TxContext): ID {
+    let title = b"제목입니다".to_string();
+    let desc = b"설명입니다".to_string();
+
+    proposal::create(
+        admin_cap,
+        title,
+        desc,
+        2000000000000,
+        ctx,
+    )
+}
+
 #[test]
 fun test_create_proposal_with_admin_cap() {
     let user = @0xCA;
@@ -32,7 +48,7 @@ fun test_create_proposal_with_admin_cap() {
         create_debug_obj(&created_proposal);
         assert!(created_proposal.getTitle() == b"제목입니다".to_string());
         assert!(created_proposal.getDescription() == b"설명입니다".to_string());
-        assert!(created_proposal.getExpiration() == 2000000000);
+        assert!(created_proposal.getExpiration() == 2000000000000); // 미래: 17587303175880642100066, // 과거 1756128021000
         assert!(created_proposal.getVotedYesCount() == 0);
         assert!(created_proposal.getVotedNoCount() == 0);
         assert!(created_proposal.getCreator() == user);
@@ -103,19 +119,6 @@ fun test_register_proposal_as_admin() {
     scenario.end();
 }
 
-fun new_proposal(admin_cap: &AdminCap, ctx: &mut TxContext): ID {
-    let title = b"제목입니다".to_string();
-    let desc = b"설명입니다".to_string();
-
-    proposal::create(
-        admin_cap,
-        title,
-        desc,
-        2000000000,
-        ctx,
-    )
-}
-
 #[test]
 // #[expected_failure(abort_code = EEmptyInventory)]
 fun test_voting() {
@@ -140,13 +143,29 @@ fun test_voting() {
         test_scenario::return_to_sender(&scenario, admin_cap)
     };
 
+    // proposal 상태를 변경하는 테스트 트랜잭션
+    // scenario.next_tx(admin);
+    // {
+    //     let admin_cap = scenario.take_from_sender<AdminCap>(); // 여기서 admin 권한이 없어 에러 발생
+    //     let mut proposal = scenario.take_shared<Proposal>();
+    //     proposal.test_set_delisted_status(&admin_cap);
+
+    //     test_scenario::return_shared(proposal);
+    //     test_scenario::return_to_sender(&scenario, admin_cap);
+    // };
+
     scenario.next_tx(bob);
     {
         let mut proposal = scenario.take_shared<Proposal>();
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(1990000000000);
+
+        create_debug_msg(b"=== 1. proposal status ===".to_string());
+        create_debug_obj(proposal.getStatus());
 
         // 첫투표
         let old_nft = option::none();
-        proposal.vote(false, old_nft, scenario.ctx());
+        proposal.vote(false, old_nft, &test_clock, scenario.ctx());
 
         create_debug_msg(b"=== 1. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
@@ -154,16 +173,20 @@ fun test_voting() {
         create_debug_obj(&proposal.getVotedNoCount());
 
         test_scenario::return_shared(proposal);
+        test_clock.destroy_for_testing();
     };
 
     scenario.next_tx(bob);
     {
         let mut proposal = scenario.take_shared<Proposal>();
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(1990000000000);
+
         let bob_nft = scenario.take_from_sender<VoteProofNFT>();
 
         // 재투표 (false -> false, 같은 선택)
         let old_nft = option::some(bob_nft);
-        proposal.vote(false, old_nft, scenario.ctx());
+        proposal.vote(false, old_nft, &test_clock, scenario.ctx());
 
         create_debug_msg(b"=== 2. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
@@ -171,11 +194,14 @@ fun test_voting() {
         create_debug_obj(&proposal.getVotedNoCount());
 
         test_scenario::return_shared(proposal);
+        test_clock.destroy_for_testing();
     };
 
     // Bob의 두 번째 NFT 가져오기
     scenario.next_tx(bob);
     {
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(1990000000000);
         let mut proposal = scenario.take_shared<Proposal>();
         let bob_nft2 = scenario.take_from_sender<VoteProofNFT>();
         create_debug_msg(b"=== 3. bob nfts ===".to_string());
@@ -183,7 +209,7 @@ fun test_voting() {
 
         // 재투표 (false -> true, 다른 선택)
         let old_nft = option::some(bob_nft2);
-        proposal.vote(true, old_nft, scenario.ctx());
+        proposal.vote(true, old_nft, &test_clock, scenario.ctx());
 
         create_debug_msg(b"=== 3. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
@@ -191,21 +217,18 @@ fun test_voting() {
         create_debug_obj(&proposal.getVotedNoCount());
 
         test_scenario::return_shared(proposal);
+        test_clock.destroy_for_testing();
     };
 
     scenario.next_tx(alice);
     {
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(1990000000000);
         let mut proposal = scenario.take_shared<Proposal>();
-        let bob_nft = scenario.take_from_address<VoteProofNFT>(bob);
-        create_debug_msg(b"=== 4. bob nfts ===".to_string());
-        create_debug_obj(&bob_nft);
 
         // alice 첫투표
-        // let old_nft = option::none();
-        let old_nft_2 = option::some(bob_nft);
-        create_debug_msg(b"=== 4. test ===".to_string());
-        create_debug_obj(&old_nft_2);
-        proposal.vote(true, old_nft_2, scenario.ctx());
+        let old_nft = option::none();
+        proposal.vote(true, old_nft, &test_clock, scenario.ctx());
 
         create_debug_msg(b"=== 4. getVotedYesCount ===".to_string());
         create_debug_obj(&proposal.getVotedYesCount());
@@ -217,6 +240,46 @@ fun test_voting() {
         // NFT 확인 후 다시 Bob에게 반환
         // test_scenario::return_to_address<VoteProofNFT>(bob, old_nft_2.destroy_some());
         test_scenario::return_shared(proposal);
+        test_clock.destroy_for_testing();
     };
+
+    scenario.end();
+}
+
+#[test]
+fun test_change_proposal_status() {
+    let admin = @0xA01;
+
+    let mut scenario = test_scenario::begin(admin);
+    {
+        dashboard::issue_admin_cap(scenario.ctx())
+    };
+
+    scenario.next_tx(admin);
+    {
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        new_proposal(&admin_cap, scenario.ctx());
+
+        test_scenario::return_to_sender(&scenario, admin_cap);
+    };
+
+    scenario.next_tx(admin);
+    {
+        let proposal = scenario.take_shared<Proposal>();
+        assert!(proposal.is_active());
+        test_scenario::return_shared(proposal)
+    };
+
+    scenario.next_tx(admin);
+    {
+        let mut proposal = scenario.take_shared<Proposal>();
+        let admin_cap = scenario.take_from_sender<AdminCap>();
+        proposal.test_set_delisted_status(&admin_cap);
+
+        assert!(!proposal.is_active(), EWrongStatus);
+        test_scenario::return_shared(proposal);
+        scenario.return_to_sender(admin_cap);
+    };
+
     scenario.end();
 }

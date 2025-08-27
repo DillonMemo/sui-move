@@ -3,10 +3,16 @@
 module voting_system::proposal;
 
 use std::string::String;
+use sui::clock::Clock;
 use sui::table::{Self, Table};
 use sui::url::{Url, new_unsafe_from_bytes};
 use voting_system::dashboard::AdminCap;
 use voting_system::debug::{create_debug_msg, create_debug_obj};
+
+public enum ProposalStatus has drop, store {
+    Active,
+    Delisted,
+}
 
 public struct Proposal has key {
     id: UID,
@@ -15,6 +21,7 @@ public struct Proposal has key {
     voted_yes_count: u64,
     voted_no_count: u64,
     expiration: u64,
+    status: ProposalStatus,
     creator: address,
     /// ex Table Object
     /// { 0x01 : true }
@@ -34,14 +41,22 @@ public struct VoteProofNFT has key {
 
 const EOldNFTRequired: u64 = 0;
 const EInvalidNFT: u64 = 1;
+const EProposalDelisted: u64 = 2;
+const EProposalExpired: u64 = 3;
 
 // === Public Functions ===
 public fun vote(
     self: &mut Proposal,
     vote_yes: bool,
     old_nft: Option<VoteProofNFT>,
+    clock: &Clock, // Clock은 불변참조로 해야함
     ctx: &mut TxContext,
 ) {
+    // 만료시간보다 현재시간이 크면 에러
+    assert!(self.expiration > clock.timestamp_ms(), EProposalExpired);
+    // proposal의 상태가 Active인지 확인
+    assert!(self.is_active(), EProposalDelisted);
+
     let sender = ctx.sender();
 
     // 기존 투표가 있다면 해당 카운트를 먼저 차감
@@ -124,6 +139,14 @@ public fun getVoterAddresses(self: &Proposal): &vector<address> {
     &self.voter_addresses
 }
 
+public fun getStatus(self: &Proposal): &ProposalStatus {
+    &self.status
+}
+
+public fun getVoteProofUrl(self: &VoteProofNFT): std::ascii::String {
+    self.url.inner_url()
+}
+
 // === Admin Functions ===
 public fun create(
     _admin_cap: &AdminCap,
@@ -139,6 +162,7 @@ public fun create(
         voted_yes_count: 0,
         voted_no_count: 0,
         expiration,
+        status: ProposalStatus::Active,
         creator: ctx.sender(),
         voters: table::new(ctx),
         voter_addresses: vector::empty<address>(),
@@ -148,6 +172,10 @@ public fun create(
     transfer::share_object(proposal);
 
     id
+}
+
+public fun change_status(self: &mut Proposal, _admin_cap: &AdminCap, status: ProposalStatus) {
+    self.status = status;
 }
 
 // === Private Functions ===
@@ -172,7 +200,7 @@ fun issue_vote_proof(proposal: &Proposal, vote_yes: bool, ctx: &mut TxContext) {
         b"https://images.blur.io/_blur-prod/0xed5af388653567af2f388e6224dc7c4b3241c544/539-176ba6216a760d01?w=1024",
     );
 
-    let url = if (vote_yes) vote_yes_image else vote_no_image;
+    let url = if (vote_yes) { vote_yes_image } else { vote_no_image };
 
     let proof = VoteProofNFT {
         id: object::new(ctx),
@@ -186,4 +214,32 @@ fun issue_vote_proof(proposal: &Proposal, vote_yes: bool, ctx: &mut TxContext) {
     create_debug_obj(&proof);
 
     transfer::transfer(proof, ctx.sender())
+}
+
+// === Test Functions ===
+#[test]
+public fun is_active(proposal: &Proposal): bool {
+    let status = proposal.getStatus();
+
+    // if (status == ProposalStatus::Active) {
+    //     true
+    // } else if (status == ProposalStatus::Delisted) {
+    //     false
+    // } else {
+    //     false
+    // }
+    match (status) {
+        ProposalStatus::Active => true,
+        _ => false,
+    }
+}
+
+/// 테스트 모드에서는 enum타입을 직접 생성하는게 불가능
+#[test_only]
+public fun test_set_active_status(self: &mut Proposal, admin_cap: &AdminCap) {
+    self.change_status(admin_cap, ProposalStatus::Active);
+}
+#[test_only]
+public fun test_set_delisted_status(self: &mut Proposal, admin_cap: &AdminCap) {
+    self.change_status(admin_cap, ProposalStatus::Delisted);
 }
