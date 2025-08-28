@@ -1,12 +1,12 @@
 sui client call \
-  --package 0x4050e30d0c6f624bf983c240fab1b4f0618a7b8e0de50e993e4baef344f5d3ec \
+  --package 0x211f8a02e162ac659bde71ca16d5ebfee983984d14ce54f87cf1bbee08ead368 \
   --module dashboard \
   --function create_proposal \
   --args "Proposal 1" "Proposal description 1" 1786826436 \
   --gas-budget 100000000
 
 sui client ptb \
-  --move-call 0x4050e30d0c6f624bf983c240fab1b4f0618a7b8e0de50e993e4baef344f5d3ec::dashboard::create_proposal \
+  --move-call 0x211f8a02e162ac659bde71ca16d5ebfee983984d14ce54f87cf1bbee08ead368::dashboard::create_proposal \
   '"Proposal 2"' '"Proposal description 2"' 1786826436 \
-  --move-call 0x4050e30d0c6f624bf983c240fab1b4f0618a7b8e0de50e993e4baef344f5d3ec::dashboard::create_proposal \
+  --move-call 0x211f8a02e162ac659bde71ca16d5ebfee983984d14ce54f87cf1bbee08ead368::dashboard::create_proposal \
   '"Proposal 3"' '"Proposal description 3"' 1786826436

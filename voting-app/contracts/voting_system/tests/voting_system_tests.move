@@ -283,3 +283,75 @@ fun test_change_proposal_status() {
 
     scenario.end();
 }
+
+#[test]
+#[expected_failure(abort_code = proposal::EProposalExpired)]
+fun test_voting_expiration() {
+    let bob = @0xB0B;
+    let admin = @0xA01;
+
+    let mut scenario = test_scenario::begin(admin);
+    {
+        dashboard::issue_admin_cap(scenario.ctx())
+    };
+
+    scenario.next_tx(admin);
+    {
+        let admin_cap = scenario.take_from_sender<AdminCap>(); // 여기서 admin 권한이 없어 에러 발생
+        new_proposal(&admin_cap, scenario.ctx());
+        test_scenario::return_to_sender(&scenario, admin_cap)
+    };
+
+    scenario.next_tx(bob);
+    {
+        let mut proposal = scenario.take_shared<Proposal>();
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(2000000000000);
+
+        // 첫투표
+        let old_nft = option::none();
+        proposal.vote(false, old_nft, &test_clock, scenario.ctx());
+
+        test_scenario::return_shared(proposal);
+        test_clock.destroy_for_testing();
+    };
+
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = test_scenario::EEmptyInventory)]
+fun test_remove_proposal() {
+    let admin = @0xA01;
+
+    let mut scenario = test_scenario::begin(admin);
+    {
+        dashboard::issue_admin_cap(scenario.ctx())
+    };
+
+    scenario.next_tx(admin);
+    {
+        let admin_cap = scenario.take_from_sender<AdminCap>(); // 여기서 admin 권한이 없어 에러 발생
+        new_proposal(&admin_cap, scenario.ctx());
+        test_scenario::return_to_sender(&scenario, admin_cap)
+    };
+
+    scenario.next_tx(admin);
+    {
+        let proposal = scenario.take_shared<Proposal>();
+        let admin_cap = scenario.take_from_sender<AdminCap>(); // 여기서 admin 권한이 없어 에러 발생
+
+        proposal.remove(&admin_cap);
+
+        scenario.return_to_sender(admin_cap);
+    };
+
+    scenario.next_tx(admin);
+    {
+        let proposal = scenario.take_shared<Proposal>();
+
+        test_scenario::return_shared(proposal);
+    };
+
+    scenario.end();
+}

@@ -147,6 +147,22 @@ public fun getVoteProofUrl(self: &VoteProofNFT): std::ascii::String {
     self.url.inner_url()
 }
 
+public fun is_active(proposal: &Proposal): bool {
+    let status = proposal.getStatus();
+
+    // if (status == ProposalStatus::Active) {
+    //     true
+    // } else if (status == ProposalStatus::Delisted) {
+    //     false
+    // } else {
+    //     false
+    // }
+    match (status) {
+        ProposalStatus::Active => true,
+        _ => false,
+    }
+}
+
 // === Admin Functions ===
 public fun create(
     _admin_cap: &AdminCap,
@@ -172,6 +188,24 @@ public fun create(
     transfer::share_object(proposal);
 
     id
+}
+
+public fun remove(self: Proposal, _admin_cap: &AdminCap) {
+    let Proposal {
+        id,
+        title: _,
+        description: _,
+        voted_yes_count: _,
+        voted_no_count: _,
+        expiration: _,
+        status: _,
+        creator: _,
+        voters,
+        voter_addresses: _,
+    } = self;
+
+    voters.drop();
+    object::delete(id);
 }
 
 public fun change_status(self: &mut Proposal, _admin_cap: &AdminCap, status: ProposalStatus) {
@@ -217,22 +251,6 @@ fun issue_vote_proof(proposal: &Proposal, vote_yes: bool, ctx: &mut TxContext) {
 }
 
 // === Test Functions ===
-#[test]
-public fun is_active(proposal: &Proposal): bool {
-    let status = proposal.getStatus();
-
-    // if (status == ProposalStatus::Active) {
-    //     true
-    // } else if (status == ProposalStatus::Delisted) {
-    //     false
-    // } else {
-    //     false
-    // }
-    match (status) {
-        ProposalStatus::Active => true,
-        _ => false,
-    }
-}
 
 /// 테스트 모드에서는 enum타입을 직접 생성하는게 불가능
 #[test_only]
